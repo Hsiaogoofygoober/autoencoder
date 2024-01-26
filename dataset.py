@@ -27,7 +27,8 @@ class Mura_Dataset(Dataset):
         img_path = os.path.join(self.folder_path, img_name)
         
         image = cv2.imread(img_path)
-        
+        image = np.floor_divide(image, 16) * 16
+
         image = Image.fromarray(image)
 
         # Perform any additional transformations on the image if needed (e.g., normalization)

@@ -6,13 +6,13 @@ input="/home/zach/test_c101/1"
 # input='/home2/mura/daniel/cf_mura_autoencoder/test_img/spot'
 
 # modelpath="/home/mura/Min/localization/model/conv_1024_3_layers_32_16_8_k3s2p1_CyclicLR/200.pth"
-modelpath="/home/zach/autoencoder/MODEL_C101/V1/200.pth"
-imagepath="../test_C101_resultRGB"
+modelpath="/home/zach/autoencoderRGB/MODEL_C101/V2/200.pth"
+imagepath="../test_C101_resultRGB256to16V3"
 
 batchs=1
 num_workers=6
 encodesize=1024
-devices="0"
+devices="1"
 
 for th_percent in $(seq 0.01 0.01 0.01)
 do

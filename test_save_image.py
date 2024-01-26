@@ -68,7 +68,7 @@ def remove_small_areas_opencv(image):
 # ===================
 
 # create save path
-save_dir = os.path.join(opts.imagepath, f'{str(opts.th_percent)}_{opts.min_area}_blue')
+save_dir = os.path.join(opts.imagepath, f'{str(opts.th_percent)}_{opts.min_area}_color')
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
     print(f"Result save path: {save_dir}")
@@ -98,134 +98,108 @@ with torch.no_grad():
     for i, data in enumerate(test_dataloader):
         img = data[0]
         img_name = data[1][0]
+        img_name = img_name.replace("JPG", "PNG")
         print(f'{time.ctime()} -> Image {number_of_image}: {img_name}')
         
         # 重建重建圖
         input = img.to(device)
         prediction = model(input)
         
-        prediction = prediction.detach().cpu().numpy()
-        input = input.detach().cpu().numpy()
+        input_numpy = input[0]
+        prediction_numpy = prediction[0]
+
+        prediction_numpy = prediction_numpy.detach().cpu().numpy()
+        input_numpy = input_numpy.detach().cpu().numpy()
 
         
 
         # 存原圖與重建圖
         
-        input_numpy = input[0]
-        prediction_numpy = prediction[0]
-        input_numpy = (input_numpy.transpose((1, 2, 0)) * 255).astype(np.uint8)
-        prediction_numpy = (prediction_numpy.transpose((1, 2, 0)) * 255).astype(np.uint8)
-        print("input numpy shape: ",input_numpy.shape)
-        #cv2.imwrite(f'/home/zach/test_C101_resultRGB/defect_{img_name}', input_numpy)
-        #cv2.imwrite(f'/home/zach/test_C101_resultRGB/normal_{img_name}', prediction_numpy)
-        
-        
 
-
+        input_numpy = np.transpose(input_numpy, (1, 2, 0))
+        input_numpy = (input_numpy*255).astype(np.uint8)
+        prediction_numpy = np.transpose(prediction_numpy, (1, 2, 0))
+        prediction_numpy = (prediction_numpy*255).astype(np.uint8)
+        cv2.imwrite(f'/home/zach/test_C101_resultRGB256to16V3/defect_{img_name}', input_numpy)
+        cv2.imwrite(f'/home/zach/test_C101_resultRGB256to16V3/normal_{img_name}', prediction_numpy)
+        
         # rm edge
         try:
-            #找到要去邊界的位置
-            #mask = get_frame_region(input[0])
-            
-            input = np.transpose(input[0], (1, 2, 0))[..., 2]
-            prediction = np.transpose(prediction[0], (1, 2, 0))[..., 2]
-            print("input shape: ", input.shape)
-            #原圖和重建圖相減
-            
-            diff = (prediction - input)
+            reconstruct_image = prediction_numpy
+            origin_image = input_numpy
+            x, y, width, height = 200, 200, 624, 624  # Example values
+            black_image = np.zeros_like(reconstruct_image)
+            origin_image = origin_image[y:y+height, x:x+width]
+            reconstruct_image = np.round(reconstruct_image / 16) * 16
+
+            #store 16 pixel reconstruct image
+            cv2.imwrite(f'/home/zach/test_C101_resultRGB256to16V3/normal_16_{img_name}', reconstruct_image)
+            reconstruct_image = reconstruct_image[y:y+height, x:x+width]
+            reconstruct_image = np.int16(reconstruct_image)
+            origin_image = np.int16(origin_image)
+            output = reconstruct_image - origin_image
+
+            output_minR, output_maxR = np.min(output[...,0]), np.max(output[...,0])
+            output_minG, output_maxG = np.min(output[...,0]), np.max(output[...,0])
+            output_minB, output_maxB = np.min(output[...,0]), np.max(output[...,0])
+
+            flat_tensorR = output[...,0].flatten()
+            flat_tensorG = output[...,1].flatten()
+            flat_tensorB = output[...,2].flatten()
+            flat_tensorR=torch.from_numpy(flat_tensorR)
+            flat_tensorR = torch.unique(flat_tensorR)
+            flat_tensorG=torch.from_numpy(flat_tensorG)
+            flat_tensorG = torch.unique(flat_tensorG)
+            flat_tensorB=torch.from_numpy(flat_tensorB)
+            flat_tensorB = torch.unique(flat_tensorB)
+
+            output=torch.from_numpy(output)
+            bottom = 0.2
+            top = 0.8
+            # 2. 保留top 與 buttom的值
+            percentileR_10_index = int(bottom * len(flat_tensorR))
+            percentileG_10_index = int(bottom * len(flat_tensorG))
+            percentileB_10_index = int(bottom * len(flat_tensorB))
+            percentileR_upper_index = int(top * len(flat_tensorR))
+            percentileG_upper_index = int(top * len(flat_tensorG))
+            percentileB_upper_index = int(top * len(flat_tensorB))
+
+            percentileR_10_value = torch.kthvalue(flat_tensorR, percentileR_10_index).values
+            percentileG_10_value = torch.kthvalue(flat_tensorG, percentileG_10_index).values
+            percentileB_10_value = torch.kthvalue(flat_tensorB, percentileB_10_index).values
+            percentileR_90_value = torch.kthvalue(flat_tensorR, percentileR_upper_index).values
+            percentileG_90_value = torch.kthvalue(flat_tensorG, percentileG_upper_index).values
+            percentileB_90_value = torch.kthvalue(flat_tensorB, percentileB_upper_index).values
 
 
-            diff_min, diff_max = np.min(diff), np.max(diff)
-            
-            # print(diff_min, diff_max)
+            percentileR_10_value = percentileR_10_value.item()
+            percentileG_10_value = percentileG_10_value.item()
+            percentileB_10_value = percentileB_10_value.item()
+            percentileR_90_value = percentileR_90_value.item()
+            percentileG_90_value = percentileG_90_value.item()
+            percentileB_90_value = percentileB_90_value.item()
 
-            #將相減後的差異平移到正數並乘上200倍
-            diff = diff - diff_min
-            diff = (diff * 200).astype(np.uint8)
-            print(diff)
-            print(diff.shape)
-            cv2.imwrite(save_dir+'/'+img_name, diff) 
-            
-            #diff = cv2.GaussianBlur(diff, (3,3), 0)
-            #diff = cv2.dilate(diff, (3,3), iterations=5)
-            #diff = cv2.GaussianBlur(diff, (3,3), 0)
-            #diff = cv2.erode(diff, (3,3), iterations=1)
-            #diff = cv2.Canny(blur, 50, 150)
-            # 視覺化 
-            # avg = 127 - np.mean(diff3) 
-            # diff3 = diff2 + avg
-            # k = diff3.reshape(1024, 1024)
-            # # cv2.imwrite(f'/home/mura/daniel/cf_mura_autoencoder/tmp_img_result/{img_name}', k)
-            # cv2.imwrite(f'/home/mura/daniel/data/smura_classification/Spot/visualize/{img_name}', k)
+            # 二值化
+            binary_tensorR = torch.where((output[...,0] >= percentileR_90_value)|(output[...,0] <= percentileR_10_value), torch.tensor(255), torch.tensor(0))
+            binary_tensorG = torch.where((output[...,1] >= percentileG_90_value)|(output[...,1] <= percentileG_10_value), torch.tensor(255), torch.tensor(0))
+            binary_tensorB = torch.where((output[...,2] >= percentileB_90_value)|(output[...,1] <= percentileB_10_value), torch.tensor(255), torch.tensor(0))
 
-            #image = cv2.GaussianBlur(diff2, (3,3), 0) #(3,3)
-            #marked_image = image
-            
-            #average_color = image.mean(axis=0).mean(axis=0)
-            #threshold = 1.5  # 設定一個閾值，決定高於平均值和低於平均值的範圍
-            #arked_image = np.where(np.abs(image - average_color) > threshold, 255, 0).astype(np.uint8)
-            
-            #kernel1 = np.ones((5,5), np.uint8)
-            #kernel2 = np.ones((3,3), np.uint8)
-            #marked_image = cv2.dilate(marked_image, kernel1)
-            #marked_image = cv2.erode(marked_image, kernel1)
-            
-            #marked_image = cv2.erode(marked_image, np.ones((7,1), np.uint8))
-            
-            # marked_image = cv2.erode(marked_image, np.ones((3,3), np.uint8))
-            # 鄉剪枝後的圖 path
-            
-            #cv2.imwrite(save_dir+'/'+img_name, marked_image)
+            rgb_image = torch.stack([binary_tensorR, binary_tensorG, binary_tensorB], dim=0)
 
-            # diff = mse_loss(prediction, input)[0]
-            #diff = np.square(prediction - input)
-            #num_pixels = diff.flatten().shape[0] # only panel
-            #num_top_pixels = int(num_pixels * opts.th_percent)
-            #filter = np.partition(diff.flatten(), -num_top_pixels)[-num_top_pixels]
-            #print(f"Panel pixel: {num_pixels}")
-            #print(f"Threshold: {filter}")
-            #diff = (diff >= filter)
-            
-            #res = remove_small_areas_opencv(diff)
-            
-            #mse = diff.mean().item()
-            #print("mse:", mse)
-            #all_MSE.append(mse)
+            rgb_image = np.clip(rgb_image, 0, 255)
+
+            # Transpose the tensor to have the channels as the last dimension (H x W x C)
+            rgb_image = rgb_image.permute(1, 2, 0)
+
+            rgb_image = rgb_image.numpy().astype(np.uint8)
+            black_image[y:y+height, x:x+width] = rgb_image
+
+            cv2.imwrite(f'{save_dir}/{img_name}', black_image)
         except:
             excpet_list.append(img_name)
             print('raise except')
             continue
-        '''
-        # 取百分比 (去邊的前處理，需算mask黑色以外的面積的前幾％)
-        # 1. 展平为一维数组
-        flat_tensor = diff.flatten()
-        flat_tensor=torch.from_numpy(flat_tensor)
-        diff=torch.from_numpy(diff)
-        # 2. 找到第10%值
-        percentile_10_index = int(0.05 * len(flat_tensor))
-        percentile_90_index = int(0.95 * len(flat_tensor))
-        percentile_10_value = torch.kthvalue(flat_tensor, percentile_10_index).values
-        percentile_90_value = torch.kthvalue(flat_tensor, percentile_90_index).values
-        percentile_10_value = percentile_10_value.item()
-        percentile_90_value = percentile_90_value.item()
-        print(percentile_10_index)
-        print(percentile_90_index)
-        print(percentile_10_value)
-        print(percentile_90_value)
-        #num_top_pixels = int(num_pixels * top_k)
-        #filter, _ = diff.view(-1).kthvalue(num_pixels - num_top_pixels)
-        #print(f"Theshold: {filter}")
- 
-        # 二值化
-        binary_tensor = torch.where((diff <= percentile_10_value) | (diff >= percentile_90_value), torch.tensor(255), torch.tensor(0.0))
-        #diff[diff>=percentile_10_value] = 1
-        #diff[diff<percentile_10_value] = 0
-        cv2.imwrite(save_dir+'/'+img_name, binary_tensor.numpy())
-        #save_images(i, img_name[0], binary_tensor, save_dir)
-        #save_images(i, img_name[0], prediction, save_dir)
-        '''
         
-
         del prediction, input
         # torch.cuda.empty_cache()
         number_of_image+=1

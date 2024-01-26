@@ -1,10 +1,11 @@
 from dataset import Mura_Dataset
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, random_split
+import cv2
 
 def mura_dataloader(opts):
     image_transforms = transforms.Compose([
-    transforms.Resize((opts.encodesize, opts.encodesize)),  # Resize the image to a smaller size if needed
+    transforms.Resize((opts.encodesize, opts.encodesize),interpolation=cv2.INTER_NEAREST),  # Resize the image to a smaller size if needed
     transforms.ToTensor()  # Convert the image to a tensor
     ])
 
